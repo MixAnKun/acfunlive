@@ -5,3 +5,6 @@ rules:
     mergeMethod: merge
     conflictReviewers: 
       - MixAnKun
+  - base: master
+    upstream: orzogc:master
+    mergeMethod: hardreset
