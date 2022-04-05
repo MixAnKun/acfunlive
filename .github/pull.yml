@@ -1,0 +1,7 @@
+version: "1"
+rules:
+  - base: auto-merge
+    upstream: orzogc:master
+    mergeMethod: merge
+    conflictReviewers: 
+      - MixAnKun
