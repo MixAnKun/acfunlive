@@ -82,6 +82,13 @@ var logString struct {
 	str strings.Builder
 }
 
+// AcFun帐号的cookies
+var acfunCookies struct {
+	sync.RWMutex
+	time    time.Time
+	cookies acfundanmu.Cookies
+}
+
 var (
 	exeDir    string                                  // 运行程序所在文件夹
 	mainCh    chan controlMsg                         // main()的管道
@@ -93,7 +100,6 @@ var (
 	recordDir *string                                 // 下载录播和弹幕时保存的文件夹
 	isNoGUI   = new(bool)                             // 程序是否启动GUI界面
 	logger    = log.New(os.Stdout, "", log.LstdFlags) // 可以同步输出的logger
-	itoa      = strconv.Itoa                          // 将int转换为字符串
 	atoi      = strconv.Atoi                          // 将字符串转换为int
 	boolStr   = strconv.FormatBool                    // 将bool类型转换为字符串
 )
@@ -132,7 +138,7 @@ func getLogTime() string {
 }
 
 // 打印带时间戳的log信息
-func lPrintln(msg ...interface{}) {
+func lPrintln(msg ...any) {
 	if *isNoGUI {
 		logger.Println(msg...)
 	}
@@ -148,47 +154,42 @@ func lPrintln(msg ...interface{}) {
 }
 
 // 打印警告信息
-func lPrintWarn(msg ...interface{}) {
-	w := []interface{}{"[WARN]"}
+func lPrintWarn(msg ...any) {
+	w := []any{"[WARN]"}
 	msg = append(w, msg...)
 	lPrintln(msg...)
 }
 
 // 打印错误信息
-func lPrintErr(msg ...interface{}) {
-	e := []interface{}{"[ERROR]"}
+func lPrintErr(msg ...any) {
+	e := []any{"[ERROR]"}
 	msg = append(e, msg...)
 	lPrintln(msg...)
 }
 
 // 打印带时间戳的log信息（格式化字符串）
-func lPrintf(format string, a ...interface{}) {
+func lPrintf(format string, a ...any) {
 	lPrintln(fmt.Sprintf(format, a...))
 }
 
 // 打印警告信息（格式化字符串）
-func lPrintWarnf(format string, a ...interface{}) {
+func lPrintWarnf(format string, a ...any) {
 	lPrintWarn(fmt.Sprintf(format, a...))
 }
 
 // 打印错误信息（格式化字符串）
-func lPrintErrf(format string, a ...interface{}) {
+func lPrintErrf(format string, a ...any) {
 	lPrintErr(fmt.Sprintf(format, a...))
-}
-
-// 将UID转换成字符串
-func (s *streamer) itoa() string {
-	return itoa(s.UID)
 }
 
 // 返回ID（UID）形式的字符串
 func (s *streamer) longID() string {
-	return s.Name + "（" + s.itoa() + "）"
+	return fmt.Sprintf("%s（%d）", s.Name, s.UID)
 }
 
 // 返回ID（UID）形式的字符串
 func longID(uid int) string {
-	return getName(uid) + "（" + itoa(uid) + "）"
+	return fmt.Sprintf("%s（%d）", getName(uid), uid)
 }
 
 // 根据uid获取liveInfo
@@ -221,25 +222,6 @@ func setLiveInfo(info liveInfo) {
 	lInfoMap.info[info.LiveID] = info
 }
 
-/*
-// 根据uid获取streamerInfo
-func getStreamerInfo(uid int) (streamerInfo, bool) {
-	sInfoMap.Lock()
-	defer sInfoMap.Unlock()
-	if info, ok := sInfoMap.info[uid]; ok {
-		return info, true
-	}
-	return streamerInfo{}, false
-}
-
-// 将info放进sInfoMap里
-func setStreamerInfo(info streamerInfo) {
-	sInfoMap.Lock()
-	defer sInfoMap.Unlock()
-	sInfoMap.info[info.UID] = info
-}
-*/
-
 // 根据liveID查询是否正在下载直播视频
 func isRecording(liveID string) bool {
 	if info, ok := getLiveInfo(liveID); ok {
@@ -256,12 +238,47 @@ func isDanmu(liveID string) bool {
 	return false
 }
 
-// 根据liveID查询是否正在直播间挂机
-/*
-func isKeepOnline(liveID string) bool {
-	if info, ok := getLiveInfo(liveID); ok {
-		return info.isKeepOnline
-	}
-	return false
+// 是否登陆AcFun帐号
+func is_login_acfun() bool {
+	acfunCookies.RLock()
+	defer acfunCookies.RUnlock()
+	return len(acfunCookies.cookies) != 0
 }
-*/
+
+// 登陆AcFun帐号
+func acfun_login() error {
+	if config.Acfun.Account != "" && config.Acfun.Password != "" {
+		acfunCookies.Lock()
+		defer acfunCookies.Unlock()
+		cookies, err := acfundanmu.Login(config.Acfun.Account, config.Acfun.Password)
+		if err != nil {
+			return err
+		}
+		acfunCookies.cookies = cookies
+		acfunCookies.time = time.Now()
+		return nil
+	}
+	return fmt.Errorf("没有设置AcFun帐号或密码")
+}
+
+// 返回AcFun帐号的cookies
+func acfun_cookies() acfundanmu.Cookies {
+	if config.Acfun.Account != "" && config.Acfun.Password != "" && is_login_acfun() {
+		acfunCookies.RLock()
+		cookies_time := time.Since(acfunCookies.time)
+		acfunCookies.RUnlock()
+		// 20天后重新登陆A站帐号
+		if cookies_time > 480*time.Hour {
+			err := acfun_login()
+			if err != nil {
+				lPrintErrf("重新登陆AcFun帐号时出现错误：%v", err)
+			} else {
+				lPrintln("重新登陆AcFun帐号成功")
+			}
+		}
+		acfunCookies.RLock()
+		defer acfunCookies.RUnlock()
+		return append(acfundanmu.Cookies{}, acfunCookies.cookies...)
+	}
+	return nil
+}
