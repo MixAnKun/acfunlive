@@ -1,0 +1,40 @@
+name: MixAn Build Test
+
+on:
+  push:
+    branches: [ auto-merge ]
+  pull_request:
+    branches: [ auto-merge ]
+  workflow_dispatch:
+
+jobs:
+  Build-Offical:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: 'true'
+    - name: Build Offical Image
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        push: false
+        file: 'Dockerfile'
+        build-args: |
+          "IGNORE_CHINA_MIRROR=1"
+          "NODE_OPTIONS=--openssl-legacy-provider"
+  Build-NoWeb:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: 'true'
+    - name: Build NoWeb Image
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        push: false
+        file: 'Dockerfile.noweb'
+        build-args: IGNORE_CHINA_MIRROR=1
