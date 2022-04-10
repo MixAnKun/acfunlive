@@ -24,7 +24,7 @@ jobs:
         build-args: |
           "IGNORE_CHINA_MIRROR=1"
           "NODE_OPTIONS=--openssl-legacy-provider"
-  Build-NoWeb-Publisth:
+  Build-NoWeb-Publish:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
