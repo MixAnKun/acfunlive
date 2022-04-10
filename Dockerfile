@@ -1,17 +1,28 @@
 FROM node:alpine AS node_build
+ARG IGNORE_CHINA_MIRROR=0
+ARG NODE_OPTIONS
+
 LABEL stage=buildnode
 
 ADD acfunlive-ui /acfunlive-ui-src
 WORKDIR /acfunlive-ui-src
 
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories && \
+RUN \
+    echo "NODE_OPTIONS=${NODE_OPTIONS}" && \
+    if [ ! "$IGNORE_CHINA_MIRROR" = 1 ]; then \
+    sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories; \
+    fi; \
     apk update && \
     apk add yarn && \
-    yarn config set registry "https://registry.npm.taobao.org/" && \
+    if [ ! "$IGNORE_CHINA_MIRROR" = 1 ]; then \
+    yarn config set registry "https://registry.npm.taobao.org/"; \
+    fi; \
     yarn install && \
     yarn generate
 
 FROM golang:1-alpine AS go_build
+ARG IGNORE_CHINA_MIRROR=0
+
 LABEL stage=buildgo
 
 ADD . /acfunlive-src
@@ -21,9 +32,16 @@ ENV GO111MODULE=on \
     GOPROXY="https://goproxy.cn" \
     CGO_ENABLED=0
 
-RUN go build
+RUN if [ "$IGNORE_CHINA_MIRROR" = 1 ]; then \
+    unset GOPROXY; \
+    else \
+    sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories; \
+    fi; \ 
+    apk add git && \
+    go build
 
 FROM alpine
+ARG IGNORE_CHINA_MIRROR=0
 
 ENV BINFILE="/acfunlive/acfunlive" \
     WEBUIDIR="/acfunlive/webui" \
@@ -36,7 +54,9 @@ EXPOSE 51890
 RUN mkdir -p $WEBUIDIR && \
     mkdir -p $CONFIGDIR && \
     mkdir -p $RECORDDIR && \
-    sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories && \
+    if [ ! "$IGNORE_CHINA_MIRROR" = 1 ]; then \
+    sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories; \
+    fi; \ 
     apk update && \
     apk upgrade && \
     apk --no-cache add ffmpeg libc6-compat tzdata && \
