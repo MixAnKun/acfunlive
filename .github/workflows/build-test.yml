@@ -3,8 +3,8 @@ name: MixAn Build Test
 on:
   push:
     branches: [ auto-merge ]
-  pull_request:
-    branches: [ auto-merge ]
+# pull_request:
+#   branches: [ auto-merge ]
   workflow_dispatch:
 
 jobs:
