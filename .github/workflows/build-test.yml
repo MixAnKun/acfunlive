@@ -46,4 +46,4 @@ jobs:
         push: true
         file: 'Dockerfile.noweb'
         build-args: IGNORE_CHINA_MIRROR=1
-        tags: ${{ secrets.PUSH_REGISTRY }}/${{ secrets.PUSH_USERNAME }}/${{ secrets.PUSH_NAME }}:latest
+        tags: ${{ secrets.PUSH_REGISTRY }}/${{ secrets.PUSH_USERNAME }}/${{ secrets.PUSH_NAME }}:${{ secrets.TAG_NOWEB }}
