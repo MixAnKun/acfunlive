@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"time"
 )
 
@@ -24,7 +25,7 @@ func (s *streamer) handleMsg(msg controlMsg) {
 		sInfoMap.Unlock()
 	case quit:
 	default:
-		lPrintErrf("未知的controlMsg：%+v", msg)
+		lPrintErrf("未知的 controlMsg：%+v", msg)
 	}
 }
 
@@ -107,7 +108,7 @@ func (s streamer) cycle(liveID string) {
 					}
 				}
 			} else {
-				// 应付AcFun API可能出现的bug：主播没下播但API显示下播
+				// 应付 AcFun API 可能出现的 bug：主播没下播但 API 显示下播
 				if isLive && !s.isLiveOnByPage() {
 					isLive = false
 					lPrintln(s.longID() + "已经下播")
@@ -124,7 +125,7 @@ func (s streamer) cycle(liveID string) {
 	}
 }
 
-// 循环检测删除lInfoMap.info里没有下载视频和弹幕以及不在挂机的key
+// 循环检测删除 lInfoMap.info 里没有下载视频和弹幕以及不在挂机的 key
 func cycleDelKey(ctx context.Context) {
 	for {
 		select {
@@ -145,7 +146,7 @@ func cycleDelKey(ctx context.Context) {
 	}
 }
 
-// 循环获取AcFun直播间数据
+// 循环获取 AcFun 直播间数据
 func cycleFetch(ctx context.Context) {
 	for {
 		select {
@@ -158,6 +159,52 @@ func cycleFetch(ctx context.Context) {
 				}
 
 				liveRooms.Lock()
+				if config.AutoKeepOnline && is_login_acfun() && needMdealInfo.Load() {
+					for uid, room := range liveRooms.newRooms {
+						// 这样可以防止请求过多，但是要下一场直播才会自动挂牌子
+						if _, ok := liveRooms.rooms[uid]; !ok {
+							go func(uid int, name string) {
+								r := rand.New(rand.NewSource(time.Now().UnixNano()))
+								n := r.Intn(10000)
+								time.Sleep(time.Duration(n) * time.Millisecond)
+
+								var isChanged bool
+								streamers.Lock()
+								if s, ok := streamers.crt[uid]; ok {
+									if !s.KeepOnline {
+										hasMedal, err := fetchMedalInfo(uid)
+										if err != nil {
+											lPrintErr("%+v", err)
+										} else if hasMedal {
+											s.KeepOnline = true
+											streamers.crt[s.UID] = s
+											isChanged = true
+										}
+									}
+								} else {
+									hasMedal, err := fetchMedalInfo(uid)
+									if err != nil {
+										lPrintErr("%+v", err)
+									} else if hasMedal {
+										s := streamer{
+											UID:        uid,
+											Name:       name,
+											KeepOnline: true,
+										}
+										streamers.crt[s.UID] = s
+										isChanged = true
+									}
+								}
+								streamers.Unlock()
+
+								if isChanged {
+									saveLiveConfig()
+								}
+							}(uid, room.name)
+						}
+					}
+				}
+
 				for uid, room := range liveRooms.rooms {
 					delete(liveRooms.rooms, uid)
 					liveRoomPool.Put(room)
@@ -166,7 +213,7 @@ func cycleFetch(ctx context.Context) {
 				liveRooms.Unlock()
 			}
 
-			// 每10秒循环一次
+			// 每 10 秒循环一次
 			time.Sleep(10 * time.Second)
 		}
 	}
@@ -182,7 +229,7 @@ func cycleGetMedals(ctx context.Context) {
 	}()
 
 	if !is_login_acfun() {
-		lPrintErr("没有登陆AcFun帐号，取消自动挂机")
+		lPrintErr("没有登陆 AcFun 帐号，取消自动挂机")
 		return
 	}
 
@@ -193,6 +240,8 @@ func cycleGetMedals(ctx context.Context) {
 		default:
 			list, err := fetchMedalList()
 			if err == nil {
+				length := len(list)
+
 				var isChanged bool
 				streamers.Lock()
 				for _, m := range list {
@@ -217,6 +266,12 @@ func cycleGetMedals(ctx context.Context) {
 
 				if isChanged {
 					saveLiveConfig()
+				}
+
+				// 守护徽章列表最多只有 500 个
+				if length >= 500 {
+					_ = needMdealInfo.CompareAndSwap(false, true)
+					return
 				}
 			} else {
 				lPrintErrf("%+v", err)
